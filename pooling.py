@@ -120,6 +120,51 @@ def determine_pool_type(molarity):
     return "strong" if molarity_nmol > 5 else "weak"
 
 
+def well_id_to_position(well_id):
+    """Convert well ID (e.g., 'A1', 'H12') to position number (1-96)."""
+    if not well_id or len(well_id) < 2:
+        return 0
+    
+    # Extract row letter and column number
+    row_letter = well_id[0].upper()
+    try:
+        col_number = int(well_id[1:])
+    except ValueError:
+        return 0
+    
+    # Convert row letter to number (A=1, B=2, ..., H=8)
+    row_number = ord(row_letter) - ord('A') + 1
+    
+    # Validate ranges
+    if row_number < 1 or row_number > 8 or col_number < 1 or col_number > 12:
+        return 0
+    
+    # Calculate position (A1=1, A2=2, ..., A12=12, B1=13, ..., H12=96)
+    position = (row_number - 1) * 12 + col_number
+    return position
+
+
+def extract_plate_number(filename):
+    """Extract plate number from filename."""
+    # Look for common patterns like plate1, plate_1, Plate001, etc.
+    import re
+    
+    # Try to find plate number patterns
+    patterns = [
+        r'[Pp]late[_\s]*(\d+)',
+        r'[Pp](\d+)',
+        r'(\d+)'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, filename)
+        if match:
+            return int(match.group(1))
+    
+    # If no pattern found, return 1 as default
+    return 1
+
+
 def calculate_pooling_strategy(df, max_samples_per_pool=48):
     """Calculate optimal pooling strategy."""
     # Sort by library molarity (strongest to weakest)
@@ -132,6 +177,16 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
     df_sorted['sub-pool samples'] = 0
     df_sorted['target molarity contribution'] = 0.0
     df_sorted['notes'] = ''
+    
+    # Initialize new liquid handling columns
+    df_sorted['SourcePlateLocation'] = ''
+    df_sorted['SourceWellPosition'] = 0
+    df_sorted['VolSample'] = 0.0
+    df_sorted['BufferLocation'] = 'TEBuffer[001]'
+    df_sorted['BufferWellPosition'] = 1
+    df_sorted['VolBuffer'] = 0.0
+    df_sorted['DestinationPlate'] = 'DestinationPlate[001]'
+    df_sorted['DestinationWellPosition'] = 0
     
     current_pool = 1
     unassigned_samples = df_sorted.index.tolist()
@@ -213,6 +268,22 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
         
         current_pool += 1
     
+    # Populate liquid handling columns
+    for idx, row in df_sorted.iterrows():
+        # Extract plate number from filename
+        plate_num = extract_plate_number(row['FileName'])
+        df_sorted.loc[idx, 'SourcePlateLocation'] = f"SourcePlate[{plate_num:03d}]"
+        
+        # Convert well ID to position (1-96)
+        well_position = well_id_to_position(row['Tape Well'])
+        df_sorted.loc[idx, 'SourceWellPosition'] = well_position
+        
+        # Volume to pool is the same as volume added
+        df_sorted.loc[idx, 'VolSample'] = row['volume added']
+        
+        # Destination well position is the sub-pool number
+        df_sorted.loc[idx, 'DestinationWellPosition'] = row['sub-pool number']
+    
     return df_sorted
 
 
@@ -248,7 +319,10 @@ def main():
             'FileName', 'Tape Well', 'Dimer Conc.', 'Dimer Molarity',
             'Lib Conc.', 'Lib Molarity', 'target ratio', 'sub-pool number',
             'volume added', 'target molarity contribution', 'sub-pool volume', 
-            'sub-pool samples', 'notes'
+            'sub-pool samples', 'notes',
+            'SourcePlateLocation', 'SourceWellPosition', 'VolSample',
+            'BufferLocation', 'BufferWellPosition', 'VolBuffer',
+            'DestinationPlate', 'DestinationWellPosition'
         ]
         
         # Ensure all columns exist

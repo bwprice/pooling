@@ -13,7 +13,9 @@ This script processes compact region table CSV files to create optimal sub-pools
 - **Pool type segregation**: Separates strong (>5 nmol/l) and weak (≤5 nmol/l) samples into different sub-pools
 - **Equimolar calculations**: Calculates exact volumes for equimolar contribution across samples
 - **Constraint enforcement**: Respects volume limits (100-150μl per pool) and sample count limits
-- **Comprehensive output**: Generates detailed CSV with all calculated parameters and flags
+- **TECAN integration**: Direct compatibility with TECAN Freedom EVOware and Fluent Control
+- **Liquid handling optimization**: Volume ranges optimized for automated pipetting systems
+- **Comprehensive output**: Generates detailed CSV with all calculated parameters and TECAN-ready columns
 
 ## Requirements
 
@@ -112,6 +114,37 @@ The script generates a CSV file named `YYYY-MM-DD_sub-pooling.csv` with the foll
 | sub-pool samples | Number of samples in sub-pool |
 | notes | Warnings and flags |
 
+### TECAN Liquid Handling Robot Columns
+
+Additional columns formatted for TECAN liquid handling systems (compatible with Freedom EVOware and Fluent Control):
+
+| Column | Description | TECAN Format |
+|--------|-------------|--------------|
+| SourcePlateLocation | Source plate labware identifier | "SourcePlate[001]", "SourcePlate[002]", etc. |
+| SourceWellPosition | Source well position (1-96 format) | 1-96 (A1=1, A2=2, ..., H12=96) |
+| VolSample | Sample volume to aspirate [μl] | Decimal format (e.g., 5.5, 12.3) |
+| BufferLocation | Buffer plate labware identifier | "TEBuffer[001]" (constant) |
+| BufferWellPosition | Buffer well position | 1 (constant - single buffer well) |
+| VolBuffer | Buffer volume to add [μl] | 0.0 (no buffer dilution) |
+| DestinationPlate | Destination plate labware identifier | "DestinationPlate[001]" (constant) |
+| DestinationWellPosition | Destination well position | 1, 2, 3, ... (equals sub-pool number) |
+
+#### TECAN Integration Notes
+
+- **Labware Names**: Use exact labware names as defined in your TECAN worklist
+- **Well Numbering**: Standard 96-well format (A1=1, A2=2, ..., A12=12, B1=13, ..., H12=96)
+- **Volume Precision**: Volumes rounded to 0.1μl precision for pipetting accuracy
+- **Plate Capacity**: Each destination well represents one sub-pool
+- **Buffer Integration**: Ready for optional buffer addition workflows
+
+#### Example TECAN Worklist Entry
+
+```
+Sample 1: SourcePlate[001], Well 1 (A1) → 5.5μl → DestinationPlate[001], Well 1
+Sample 2: SourcePlate[001], Well 2 (A2) → 7.2μl → DestinationPlate[001], Well 1  
+Sample 3: SourcePlate[002], Well 1 (A1) → 3.8μl → DestinationPlate[001], Well 2
+```
+
 ## Example Output Summary
 
 ```
@@ -147,18 +180,51 @@ Pool 7: 3 samples, 22.2μl total
 
 ## Algorithm Parameters
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| Strong pool threshold | 5 nmol/l | Molarity cutoff for strong vs weak classification |
-| Strong volume range | 1.5-7μl | Volume limits for strong samples |
-| Weak volume range | 7-20μl | Volume limits for weak samples |
-| Pool volume range | 100-150μl | Total volume limits per sub-pool |
-| Max samples per pool | 48 | Maximum number of samples per sub-pool |
-| Minimum starting volume | 1.5μl | Minimum volume for strongest sample |
+| Parameter | Default | Description | TECAN Consideration |
+|-----------|---------|-------------|-------------------|
+| Strong pool threshold | 5 nmol/l | Molarity cutoff for strong vs weak classification | Optimized for standard tip volumes |
+| Strong volume range | 1.5-7μl | Volume limits for strong samples | Within TECAN precision range |
+| Weak volume range | 7-20μl | Volume limits for weak samples | Single tip capacity limit |
+| Pool volume range | 100-150μl | Total volume limits per sub-pool | Optimal for downstream processing |
+| Max samples per pool | 48 | Maximum number of samples per sub-pool | Half-plate processing efficiency |
+| Minimum starting volume | 1.5μl | Minimum volume for strongest sample | Above TECAN dead volume |
+
+## TECAN Integration
+
+### Workflow Compatibility
+
+This script generates output that is directly compatible with TECAN Freedom EVOware and Fluent Control software. The CSV output can be imported as a worklist or used to generate TECAN scripts.
+
+### Supported TECAN Features
+
+- **Multi-plate processing**: Handles samples from multiple source plates
+- **Variable volume pipetting**: Optimized volumes for equimolar pooling
+- **Plate barcode integration**: Ready for labware tracking systems
+- **Quality control flagging**: Samples with volume issues clearly marked
+
+### TECAN Worklist Import
+
+1. **Load CSV**: Import the generated CSV file into EVOware/Fluent Control
+2. **Map Labware**: Ensure labware names match your deck configuration:
+   - Source plates: "SourcePlate[001]", "SourcePlate[002]", etc.
+   - Destination plate: "DestinationPlate[001]"  
+   - Buffer reservoir: "TEBuffer[001]"
+3. **Configure Tips**: Use appropriate tip types for volume ranges (1.5-20μl)
+4. **Run Protocol**: Execute automated pooling with liquid level detection
+
+### Error Handling
+
+Samples flagged in the 'notes' column require manual intervention:
+- **"Too strong"**: Requires dilution before automated processing
+- **"Too weak"**: May need concentration or manual pooling
+- **"Pool below 100μl"**: Consider combining with another sub-pool
+
 
 ## Use Cases
 
 - **High-throughput sequencing prep**: Optimize library pooling for Illumina sequencing
-- **Quality control**: Identify problematic samples before sequencing
-- **Resource planning**: Calculate total volumes and pool requirements
-- **Automation integration**: Generate pipetting instructions for liquid handlers
+- **TECAN automation**: Generate worklists for Freedom EVOware and Fluent Control systems
+- **Quality control**: Identify problematic samples before automated processing
+- **Resource planning**: Calculate total volumes and pool requirements for liquid handlers
+- **Automation integration**: Generate pipetting instructions compatible with robotic systems
+- **Laboratory standardization**: Consistent pooling protocols across multiple TECAN instruments
