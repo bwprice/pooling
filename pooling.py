@@ -203,7 +203,7 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
         pool_type = determine_pool_type(strongest_molarity)
         
         # Volume constraints based on pool type
-        min_vol_per_sample = 3 if pool_type == "strong" else 7
+        min_vol_per_sample = 3 if pool_type == "strong" else 10
         max_vol_per_sample = 7 if pool_type == "strong" else 20
         
         # Start with strongest sample - use at least 3μl, preferably more
@@ -235,7 +235,7 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
             
             # Check if sample fits constraints and is same pool type as the pool
             sample_pool_type = determine_pool_type(sample_molarity)
-            sample_min_vol = 3 if sample_pool_type == "strong" else 7
+            sample_min_vol = 3 if sample_pool_type == "strong" else 10
             sample_max_vol = 7 if sample_pool_type == "strong" else 20
             
             # Only add samples of the same pool type (strong with strong, weak with weak)
