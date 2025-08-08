@@ -42,8 +42,8 @@ This script processes compact region table CSV files to create optimal sub-pools
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd pooling-tapes
+git clone https://github.com/bwprice/pooling.git
+cd pooling
 
 # Install dependencies
 pip install pandas
@@ -64,13 +64,13 @@ python pooling.py /path/to/csv/folder
 python pooling.py /path/to/csv/folder --max-samples 24
 
 # Specify maximum volume per sample (default: 20.0μl)
-python pooling.py /path/to/csv/folder --max-volume 15.0
+python pooling.py /path/to/csv/folder --max-volume 15
 
 # Combine multiple options
-python pooling.py /path/to/csv/folder --max-samples 24 --max-volume 25.0
+python pooling.py /path/to/csv/folder --max-samples 24 --max-volume 25
 
 # Example with full path
-python pooling.py "C:/data/tape_results" --max-samples 96 --max-volume 30.0
+python pooling.py "C:/data/tape_results" --max-samples 96 --max-volume 30
 ```
 
 ### Command Line Arguments
@@ -79,24 +79,19 @@ python pooling.py "C:/data/tape_results" --max-samples 96 --max-volume 30.0
 |----------|------|---------|-------------|
 | `input_folder` | Required | - | Path to folder containing CSV files |
 | `--max-samples` | Integer | 48 | Maximum number of samples per sub-pool |
-| `--max-volume` | Float | 20.0 | Maximum volume per sample in μl |
+| `--max-volume` | Float | 20 | Maximum volume per sample in μl |
 | `--help` | - | - | Show help message and exit |
 
 ### Usage Examples by Application
 
-**High-precision pipetting (e.g., acoustic dispensers)**:
-```bash
-python pooling.py data_folder --max-volume 10.0
-```
-
 **Standard TECAN liquid handling**:
 ```bash
-python pooling.py data_folder --max-volume 20.0  # default
+python pooling.py data_folder --max-volume 20  # default
 ```
 
 **Large volume capacity systems**:
 ```bash
-python pooling.py data_folder --max-volume 50.0
+python pooling.py data_folder --max-volume 50
 ```
 
 **Smaller pools for better mixing**:
@@ -114,7 +109,7 @@ The script expects D1000 compact region table CSV files with the following colum
 - `From [bp]`: Start position in base pairs
 - `To [bp]`: End position in base pairs
 - `Average Size [bp]`: Average fragment size
-- `Conc. [pg/μl]`: Concentration in picograms per microliter
+- `Conc.`: Concentration in nano/picograms per microliter
 - `Region Molarity [nmol/l]` or `Region Molarity [pmol/l]`: Molarity in nanomoles or picomoles per liter
 - `% of Total`: Percentage of total
 - `Region Comment`: Comments (optional)
@@ -229,16 +224,12 @@ The script adds detailed notes explaining scaling actions:
 python pooling.py input_folder
 
 # Use 15μl maximum (more conservative)
-python pooling.py input_folder --max-volume 15.0
+python pooling.py input_folder --max-volume 15
 
 # Use 30μl maximum (allows more scaling)
-python pooling.py input_folder --max-volume 30.0
+python pooling.py input_folder --max-volume 30
 ```
 
-**Impact of Max Volume Settings**:
-- **Lower limits** (15μl): More constrained scaling, more pools may remain below 150μl
-- **Higher limits** (30μl): More aggressive scaling, more pools reach 150μl target
-- **Standard limits** (20μl): Balanced approach optimized for most TECAN systems
 
 ## Algorithm Logic
 
@@ -246,6 +237,7 @@ python pooling.py input_folder --max-volume 30.0
 
 1. **Dimer identification**: Fragments with From ≤ 160bp and To ≤ 200bp
 2. **Library identification**: Fragments with From ≥ 160bp
+
 ### Volume Constraints
 
 **Strong pools** (>5 nmol/l): **3-7 μl per sample**
