@@ -9,6 +9,8 @@ A Python tool for calculating optimal sub-pooling strategies for equimolar DNA l
 - ✅ **Organized Output Structure**: Automatic output folder creation with timestamped filenames
 - ✅ **Improved Volume Constraints**: Updated minimum volume from 1.5μl to 3μl for strong samples
 - ✅ **Enhanced File Management**: Automatic filtering of previous output files during processing
+- ✅ **Smart Pool Volume Scaling**: Automatically scales pools to 150μl target while respecting volume constraints
+- ✅ **Configurable Max Volume**: Customizable maximum volume per sample for different pipetting systems
 
 ## Overview
 
@@ -24,6 +26,8 @@ This script processes compact region table CSV files to create optimal sub-pools
 - **Pool type segregation**: Separates strong (>5 nmol/l) and weak (≤5 nmol/l) samples into different sub-pools
 - **Equimolar calculations**: Calculates exact volumes for equimolar contribution across samples
 - **Constraint enforcement**: Respects volume limits (100-150μl per pool) and sample count limits
+- **Smart pool volume optimization**: Automatically scales pools toward 150μl target while respecting constraints
+- **Configurable volume limits**: Customizable maximum volume per sample (default 20μl)
 - **TECAN integration**: Direct compatibility with TECAN Freedom EVOware and Fluent Control
 - **Liquid handling optimization**: Volume ranges optimized for automated pipetting systems
 - **Comprehensive output**: Generates detailed CSV with all calculated parameters and TECAN-ready columns
@@ -59,8 +63,45 @@ python pooling.py /path/to/csv/folder
 # Specify maximum samples per sub-pool (default: 48)
 python pooling.py /path/to/csv/folder --max-samples 24
 
+# Specify maximum volume per sample (default: 20.0μl)
+python pooling.py /path/to/csv/folder --max-volume 15.0
+
+# Combine multiple options
+python pooling.py /path/to/csv/folder --max-samples 24 --max-volume 25.0
+
 # Example with full path
-python sub-pooling.py "C:/data/tape_results" --max-samples 96
+python pooling.py "C:/data/tape_results" --max-samples 96 --max-volume 30.0
+```
+
+### Command Line Arguments
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `input_folder` | Required | - | Path to folder containing CSV files |
+| `--max-samples` | Integer | 48 | Maximum number of samples per sub-pool |
+| `--max-volume` | Float | 20.0 | Maximum volume per sample in μl |
+| `--help` | - | - | Show help message and exit |
+
+### Usage Examples by Application
+
+**High-precision pipetting (e.g., acoustic dispensers)**:
+```bash
+python pooling.py data_folder --max-volume 10.0
+```
+
+**Standard TECAN liquid handling**:
+```bash
+python pooling.py data_folder --max-volume 20.0  # default
+```
+
+**Large volume capacity systems**:
+```bash
+python pooling.py data_folder --max-volume 50.0
+```
+
+**Smaller pools for better mixing**:
+```bash
+python pooling.py data_folder --max-samples 24
 ```
 
 ## Input Data Format
@@ -143,6 +184,62 @@ your_data_folder/
 - **Console reporting**: Shows which file maps to each plate number
 - **Automatic filtering**: Previous output files are ignored during processing
 
+## Smart Pool Volume Optimization
+
+### Overview
+
+The script includes intelligent volume scaling to maximize pool volumes while maintaining equimolar ratios and respecting pipetting constraints.
+
+### Smart Scaling Algorithm
+
+**Target**: Scale all pools to 150μl for optimal downstream processing
+
+**Logic**:
+1. **Calculate target scaling**: `scaling_factor = 150 / current_pool_volume`
+2. **Check volume constraints**: Ensure no sample exceeds maximum volume limit
+3. **Apply constrained scaling**: Use the maximum safe scaling factor
+4. **Maintain equimolar ratios**: All samples in a pool scale proportionally
+
+### Scaling Scenarios
+
+**Scenario A: Full Scaling to 150μl**
+- Pool volume: 68.5μl → Target scaling: 2.19x
+- Max sample in pool: 3.7μl → After scaling: 8.1μl
+- **Result**: Pool scales fully to 150μl ✅
+
+**Scenario B: Volume-Constrained Scaling**  
+- Pool volume: 48.7μl → Target scaling: 3.08x
+- Max sample in pool: 14.6μl → After scaling would be: 45.0μl (exceeds 20μl limit)
+- **Constrained scaling**: 20μl ÷ 14.6μl = 1.37x
+- **Result**: Pool scales to 66.7μl (maximum safe improvement) ⚠️
+
+### Scaling Notes in Output
+
+The script adds detailed notes explaining scaling actions:
+
+- `"Scaled 2.19x to 150μl target (from 68.5μl)"` - Full scaling achieved
+- `"Scaled 1.37x (volume-limited from 48.7μl to 66.7μl)"` - Constrained by volume limits
+- `"Pool below 100μl minimum after scaling"` - Pool still needs attention
+
+### Configuration Options
+
+**Maximum Volume per Sample**:
+```bash
+# Use default 20μl maximum
+python pooling.py input_folder
+
+# Use 15μl maximum (more conservative)
+python pooling.py input_folder --max-volume 15.0
+
+# Use 30μl maximum (allows more scaling)
+python pooling.py input_folder --max-volume 30.0
+```
+
+**Impact of Max Volume Settings**:
+- **Lower limits** (15μl): More constrained scaling, more pools may remain below 150μl
+- **Higher limits** (30μl): More aggressive scaling, more pools reach 150μl target
+- **Standard limits** (20μl): Balanced approach optimized for most TECAN systems
+
 ## Algorithm Logic
 
 ### Sample Classification
@@ -152,8 +249,8 @@ your_data_folder/
 ### Volume Constraints
 
 **Strong pools** (>5 nmol/l): **3-7 μl per sample**
-**Weak pools** (≤5 nmol/l): **7-20 μl per sample**
-**Total pool volume**: **100-150 μl**
+**Weak pools** (≤5 nmol/l): **7-MAX μl per sample** (MAX = configurable, default 20μl)
+**Total pool volume**: **100-150 μl** (automatically optimized toward 150μl)
 **Maximum samples per pool**: Configurable (default 48)
 
 ### Pooling Strategy
@@ -162,15 +259,17 @@ your_data_folder/
 2. **Initialize sub-pool**: Start with strongest available sample
 3. **Add compatible samples**: Only samples of same pool type (strong/weak)
 4. **Volume calculation**: Ensure equimolar contribution based on strongest sample
-5. **Constraint checking**:
-   - Volume per sample: 3-7μl (strong) or 7-20μl (weak)
-   - Total pool volume: 100-150μl
+5. **Smart volume optimization**: Scale pools toward 150μl target while respecting volume constraints
+6. **Constraint checking**:
+   - Volume per sample: 3-7μl (strong) or 7-MAX μl (weak, where MAX is configurable)
+   - Total pool volume: Optimized toward 150μl
    - Maximum samples per pool: Configurable (default 48)
 
 ### Quality Controls
 
-- **Error detection**: Flags samples requiring <3μl or >20μl
-- **Volume warnings**: Notes pools below 100μl minimum
+- **Error detection**: Flags samples requiring <3μl or >MAX μl (where MAX is configurable)
+- **Volume warnings**: Notes pools below 100μl minimum after scaling attempts
+- **Smart scaling**: Automatically optimizes pool volumes toward 150μl target
 - **Data validation**: Ensures no duplicate regions per sample
 - **File filtering**: Automatically excludes previous output files from processing
 
@@ -239,16 +338,20 @@ Plate Assignment:
   Plate 002: Sample_Batch_B.csv
 
 Pooling strategy saved to: /data/results/output/2025-08-08_143021_sub-pooling.csv
-Processed 192 samples into 7 sub-pools
+Processed 192 samples into 8 sub-pools
 
 Sub-pool Summary:
-Pool 1: 48 samples, 141.7μl total
-Pool 2: 48 samples, 85.5μl total
-Pool 3: 38 samples, 83.3μl total
-Pool 4: 19 samples, 149.9μl total
-Pool 5: 19 samples, 145.4μl total
-Pool 6: 17 samples, 140.4μl total
-Pool 7: 3 samples, 22.2μl total
+Pool 1: 29.0 samples, 150.0ul total
+Pool 2: 41.0 samples, 150.0ul total  
+Pool 3: 41.0 samples, 150.0ul total
+Pool 4: 21.0 samples, 150.0ul total
+Pool 5: 19.0 samples, 150.0ul total
+Pool 6: 19.0 samples, 150.0ul total
+Pool 7: 17.0 samples, 150.0ul total
+Pool 8: 5.0 samples, 66.7ul total
+```
+
+Note: Most pools now reach the optimal 150μl target volume. Pool 8 is volume-constrained but still significantly improved from its original size.
 ```
 
 ## Troubleshooting
@@ -264,8 +367,8 @@ Pool 7: 3 samples, 22.2μl total
 
 - `Multiple dimer regions found`: Sample has more than one dimer region
 - `Too strong - requires <3μl`: Sample molarity too high for practical pipetting
-- `Too weak - requires >20μl`: Sample molarity too low for efficient pooling
-- `Pool below 100μl minimum`: Sub-pool volume insufficient for handling
+- `Too weak - requires >20μl`: Sample molarity too low for efficient pooling (value shows actual max volume limit)
+- `Pool below 100μl minimum after scaling`: Sub-pool volume insufficient even after optimization
 
 ## Algorithm Parameters
 
@@ -273,10 +376,12 @@ Pool 7: 3 samples, 22.2μl total
 |-----------|---------|-------------|-------------------|
 | Strong pool threshold | 5 nmol/l | Molarity cutoff for strong vs weak classification | Optimized for standard tip volumes |
 | Strong volume range | 3-7μl | Volume limits for strong samples | Within TECAN precision range |
-| Weak volume range | 7-20μl | Volume limits for weak samples | Single tip capacity limit |
-| Pool volume range | 100-150μl | Total volume limits per sub-pool | Optimal for downstream processing |
+| Weak volume range | 7-MAX μl | Volume limits for weak samples (MAX configurable) | Single tip capacity limit |
+| Pool volume target | 150μl | Target volume for pool optimization | Optimal for downstream processing |
+| Pool volume range | 100-150μl | Acceptable volume range per sub-pool | Smart scaling maximizes within range |
 | Max samples per pool | 48 | Maximum number of samples per sub-pool | Half-plate processing efficiency |
 | Minimum starting volume | 3μl | Minimum volume for strongest sample | Above TECAN dead volume |
+| Maximum volume per sample | 20μl | Configurable maximum volume limit | Pipetting accuracy constraint |
 
 ## TECAN Integration
 
@@ -287,9 +392,12 @@ This script generates output that is directly compatible with TECAN Freedom EVOw
 ### Supported TECAN Features
 
 - **Multi-plate processing**: Handles samples from multiple source plates
-- **Variable volume pipetting**: Optimized volumes for equimolar pooling
+- **Variable volume pipetting**: Optimized volumes for equimolar pooling with smart scaling
+- **Enhanced volume ranges**: Most pools now reach 150μl optimal volume for downstream processing  
+- **Flexible volume limits**: Configurable maximum volumes to match your TECAN setup
 - **Plate barcode integration**: Ready for labware tracking systems
 - **Quality control flagging**: Samples with volume issues clearly marked
+- **Improved liquid handling**: Better volume distribution reduces waste and improves accuracy
 
 ### TECAN Worklist Import
 

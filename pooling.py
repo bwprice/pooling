@@ -170,7 +170,7 @@ def well_id_to_position(well_id):
     return position
 
 
-def calculate_pooling_strategy(df, max_samples_per_pool=48):
+def calculate_pooling_strategy(df, max_samples_per_pool=48, max_volume_per_sample=20.0):
     """Calculate optimal pooling strategy."""
     # Sort by library molarity (strongest to weakest)
     df_sorted = df.sort_values('Lib Molarity', ascending=False).copy()
@@ -203,8 +203,8 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
         pool_type = determine_pool_type(strongest_molarity)
         
         # Volume constraints based on pool type
-        min_vol_per_sample = 3 if pool_type == "strong" else 10
-        max_vol_per_sample = 7 if pool_type == "strong" else 20
+        min_vol_per_sample = 3 if pool_type == "strong" else 7
+        max_vol_per_sample = 7 if pool_type == "strong" else max_volume_per_sample
         
         # Start with strongest sample - use at least 3μl, preferably more
         strongest_volume = round(max(3, min_vol_per_sample), 2)
@@ -221,8 +221,8 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
         # Check if sample can be pooled (volume constraints)
         if strongest_volume < 1:
             df_sorted.loc[strongest_idx, 'notes'] = 'Too strong - requires <1μl'
-        elif strongest_volume > 20:
-            df_sorted.loc[strongest_idx, 'notes'] = 'Too weak - requires >20μl'
+        elif strongest_volume > max_volume_per_sample:
+            df_sorted.loc[strongest_idx, 'notes'] = f'Too weak - requires >{max_volume_per_sample}μl'
         
         unassigned_samples.remove(strongest_idx)
         
@@ -235,8 +235,8 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
             
             # Check if sample fits constraints and is same pool type as the pool
             sample_pool_type = determine_pool_type(sample_molarity)
-            sample_min_vol = 3 if sample_pool_type == "strong" else 10
-            sample_max_vol = 7 if sample_pool_type == "strong" else 20
+            sample_min_vol = 3 if sample_pool_type == "strong" else 7
+            sample_max_vol = 7 if sample_pool_type == "strong" else max_volume_per_sample
             
             # Only add samples of the same pool type (strong with strong, weak with weak)
             # Check if volume is within allowed range, pool won't exceed 150μl, and max samples not reached
@@ -257,19 +257,63 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
             # Flag samples with volume issues
             elif required_volume < 3:
                 df_sorted.loc[sample_idx, 'notes'] = 'Too strong - requires <3μl'
-            elif required_volume > 20:
-                df_sorted.loc[sample_idx, 'notes'] = 'Too weak - requires >20μl'
+            elif required_volume > max_volume_per_sample:
+                df_sorted.loc[sample_idx, 'notes'] = f'Too weak - requires >{max_volume_per_sample}μl'
         
         # Update pool volume and sample count for all samples in this pool
         for sample_idx in current_pool_samples:
             df_sorted.loc[sample_idx, 'sub-pool volume'] = round(current_pool_volume, 2)
             df_sorted.loc[sample_idx, 'sub-pool samples'] = len(current_pool_samples)
         
-        # Check if pool meets minimum volume requirement
+        # Apply smart scaling if pool is below 150μl
+        if current_pool_volume < 150:
+            # Calculate scaling factors
+            target_scaling = 150 / current_pool_volume
+            
+            # Find the maximum current volume in this pool to determine constraint
+            max_current_volume = max(df_sorted.loc[sample_idx, 'volume added'] for sample_idx in current_pool_samples)
+            max_scaling = max_volume_per_sample / max_current_volume if max_current_volume > 0 else target_scaling
+            
+            # Use the smaller scaling factor (smart scaling)
+            actual_scaling = min(target_scaling, max_scaling)
+            
+            if actual_scaling > 1.0:  # Only scale up
+                # Apply scaling to all samples in this pool
+                for sample_idx in current_pool_samples:
+                    old_volume = df_sorted.loc[sample_idx, 'volume added']
+                    new_volume = round(old_volume * actual_scaling, 2)
+                    df_sorted.loc[sample_idx, 'volume added'] = new_volume
+                    
+                    # Update molarity contribution
+                    old_contribution = df_sorted.loc[sample_idx, 'target molarity contribution']
+                    new_contribution = round(old_contribution * actual_scaling, 2)
+                    df_sorted.loc[sample_idx, 'target molarity contribution'] = new_contribution
+                
+                # Calculate new pool volume
+                new_pool_volume = round(current_pool_volume * actual_scaling, 2)
+                
+                # Update pool volume for all samples in this pool
+                for sample_idx in current_pool_samples:
+                    df_sorted.loc[sample_idx, 'sub-pool volume'] = new_pool_volume
+                
+                # Add scaling notes
+                if actual_scaling < target_scaling:
+                    scaling_note = f"Scaled {actual_scaling:.2f}x (volume-limited from {current_pool_volume:.1f}μl to {new_pool_volume:.1f}μl)"
+                else:
+                    scaling_note = f"Scaled {actual_scaling:.2f}x to 150μl target (from {current_pool_volume:.1f}μl)"
+                
+                for sample_idx in current_pool_samples:
+                    current_note = df_sorted.loc[sample_idx, 'notes']
+                    df_sorted.loc[sample_idx, 'notes'] = f"{current_note}; {scaling_note}".strip('; ')
+                
+                # Update current_pool_volume for the minimum volume check below
+                current_pool_volume = new_pool_volume
+        
+        # Check if pool still needs attention after scaling
         if current_pool_volume < 100:
             for sample_idx in current_pool_samples:
                 current_note = df_sorted.loc[sample_idx, 'notes']
-                df_sorted.loc[sample_idx, 'notes'] = f"{current_note}; Pool below 100μl minimum".strip('; ')
+                df_sorted.loc[sample_idx, 'notes'] = f"{current_note}; Pool below 100μl minimum after scaling".strip('; ')
         
         current_pool += 1
     
@@ -297,6 +341,8 @@ def main():
     parser.add_argument('input_folder', help='Folder containing CSV files to process')
     parser.add_argument('--max-samples', type=int, default=48, 
                        help='Maximum number of samples per sub-pool (default: 48)')
+    parser.add_argument('--max-volume', type=float, default=20.0, 
+                       help='Maximum volume per sample in ul (default: 20.0)')
     
     args = parser.parse_args()
     
@@ -317,7 +363,7 @@ def main():
         df = calculate_target_ratio(df)
         
         # Calculate pooling strategy
-        df = calculate_pooling_strategy(df, args.max_samples)
+        df = calculate_pooling_strategy(df, args.max_samples, args.max_volume)
         
         # Prepare output
         output_columns = [
