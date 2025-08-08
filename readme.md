@@ -2,6 +2,14 @@
 
 A Python tool for calculating optimal sub-pooling strategies for equimolar DNA library sequencing based on tapestation compact region table data.
 
+## Recent Updates (August 2025)
+
+- ✅ **Dual Molarity Unit Support**: Automatically handles both nmol/l and pmol/l inputs
+- ✅ **Smart Plate Assignment**: Sequential plate numbering with clear console reporting
+- ✅ **Organized Output Structure**: Automatic output folder creation with timestamped filenames
+- ✅ **Improved Volume Constraints**: Updated minimum volume from 1.5μl to 3μl for strong samples
+- ✅ **Enhanced File Management**: Automatic filtering of previous output files during processing
+
 ## Overview
 
 This script processes compact region table CSV files to create optimal sub-pools for equimolar sequencing. It analyzes dimer and target library concentrations to calculate precise volumes needed for each sample, ensuring equimolar contribution while respecting volume and sample count constraints.
@@ -9,6 +17,9 @@ This script processes compact region table CSV files to create optimal sub-pools
 ## Features
 
 - **Automated data processing**: Handles multiple CSV files with different text encodings
+- **Dual unit support**: Automatically detects and converts between nmol/l and pmol/l molarity units
+- **Smart plate identification**: Sequential plate numbering with clear console reporting
+- **Organized output**: Automatic creation of output folders with timestamped filenames
 - **Dimer/Library classification**: Automatically identifies dimer (130-160bp) and target library (180-350bp) regions
 - **Pool type segregation**: Separates strong (>5 nmol/l) and weak (≤5 nmol/l) samples into different sub-pools
 - **Equimolar calculations**: Calculates exact volumes for equimolar contribution across samples
@@ -63,9 +74,74 @@ The script expects D1000 compact region table CSV files with the following colum
 - `To [bp]`: End position in base pairs
 - `Average Size [bp]`: Average fragment size
 - `Conc. [pg/μl]`: Concentration in picograms per microliter
-- `Region Molarity [pmol/l]`: Molarity in picomoles per liter
+- `Region Molarity [nmol/l]` or `Region Molarity [pmol/l]`: Molarity in nanomoles or picomoles per liter
 - `% of Total`: Percentage of total
 - `Region Comment`: Comments (optional)
+
+### Molarity Unit Support
+
+The script automatically detects and handles both molarity unit formats:
+- **Primary**: `nmol/l` (nanomoles per liter) - used directly
+- **Legacy**: `pmol/l` (picomoles per liter) - automatically converted to nmol/l (÷1000)
+
+## File Organization
+
+### Input Structure
+```
+your_data_folder/
+├── Plate1_data.csv
+├── Plate2_data.csv
+└── PlateN_data.csv
+```
+
+### Output Structure (Auto-created)
+```
+your_data_folder/
+├── Plate1_data.csv
+├── Plate2_data.csv
+├── PlateN_data.csv
+└── output/
+    ├── 2025-08-08_102509_sub-pooling.csv
+    ├── 2025-08-08_143021_sub-pooling.csv
+    └── ...
+```
+
+### Workflow Example
+
+1. **Prepare your data folder**:
+   ```
+   my_experiment/
+   ├── PlateA_results.csv
+   └── PlateB_results.csv
+   ```
+
+2. **Run the script**:
+   ```bash
+   python pooling.py my_experiment
+   ```
+
+3. **Console output shows plate mapping**:
+   ```
+   Plate Assignment:
+     Plate 001: PlateA_results.csv
+     Plate 002: PlateB_results.csv
+   ```
+
+4. **Results are organized automatically**:
+   ```
+   my_experiment/
+   ├── PlateA_results.csv
+   ├── PlateB_results.csv
+   └── output/
+       └── 2025-08-08_143021_sub-pooling.csv
+   ```
+
+### Plate Assignment Logic
+
+- **Single CSV**: Assigned to `SourcePlate[001]`
+- **Multiple CSVs**: Sequential assignment (`001`, `002`, etc.) in alphabetical order
+- **Console reporting**: Shows which file maps to each plate number
+- **Automatic filtering**: Previous output files are ignored during processing
 
 ## Algorithm Logic
 
@@ -73,9 +149,12 @@ The script expects D1000 compact region table CSV files with the following colum
 
 1. **Dimer identification**: Fragments with From ≤ 160bp and To ≤ 200bp
 2. **Library identification**: Fragments with From ≥ 160bp
-3. **Pool type determination**: 
-   - Strong pools: Library molarity > 5 nmol/l (1.5-7μl per sample)
-   - Weak pools: Library molarity ≤ 5 nmol/l (7-20μl per sample)
+### Volume Constraints
+
+**Strong pools** (>5 nmol/l): **3-7 μl per sample**
+**Weak pools** (≤5 nmol/l): **7-20 μl per sample**
+**Total pool volume**: **100-150 μl**
+**Maximum samples per pool**: Configurable (default 48)
 
 ### Pooling Strategy
 
@@ -84,28 +163,33 @@ The script expects D1000 compact region table CSV files with the following colum
 3. **Add compatible samples**: Only samples of same pool type (strong/weak)
 4. **Volume calculation**: Ensure equimolar contribution based on strongest sample
 5. **Constraint checking**:
-   - Volume per sample: 1.5-7μl (strong) or 7-20μl (weak)
+   - Volume per sample: 3-7μl (strong) or 7-20μl (weak)
    - Total pool volume: 100-150μl
    - Maximum samples per pool: Configurable (default 48)
 
 ### Quality Controls
 
-- **Error detection**: Flags samples requiring <1μl or >20μl
+- **Error detection**: Flags samples requiring <3μl or >20μl
 - **Volume warnings**: Notes pools below 100μl minimum
 - **Data validation**: Ensures no duplicate regions per sample
+- **File filtering**: Automatically excludes previous output files from processing
 
 ## Output Format
 
-The script generates a CSV file named `YYYY-MM-DD_sub-pooling.csv` with the following columns:
+The script generates timestamped CSV files in an `output` subfolder with the naming format: `YYYY-MM-DD_HHMMSS_sub-pooling.csv`
+
+**Example**: `2025-08-08_102509_sub-pooling.csv`
+
+### Output Columns
 
 | Column | Description |
 |--------|-------------|
 | FileName | Original HSD1000 filename |
 | Tape Well | Well identifier |
 | Dimer Conc. | Dimer concentration [pg/μl] |
-| Dimer Molarity | Dimer molarity [pmol/l] |
+| Dimer Molarity | Dimer molarity [nmol/l] |
 | Lib Conc. | Library concentration [pg/μl] |
-| Lib Molarity | Library molarity [pmol/l] |
+| Lib Molarity | Library molarity [nmol/l] |
 | target ratio | Target/dimer molarity ratio |
 | sub-pool number | Assigned sub-pool number |
 | volume added | Volume to add to sub-pool [μl] |
@@ -149,7 +233,12 @@ Sample 3: SourcePlate[002], Well 1 (A1) → 3.8μl → DestinationPlate[001], We
 
 ```
 Processing CSV files in /data/results...
-Pooling strategy saved to: /data/results/2025-07-30_sub-pooling.csv
+
+Plate Assignment:
+  Plate 001: Sample_Batch_A.csv
+  Plate 002: Sample_Batch_B.csv
+
+Pooling strategy saved to: /data/results/output/2025-08-08_143021_sub-pooling.csv
 Processed 192 samples into 7 sub-pools
 
 Sub-pool Summary:
@@ -174,7 +263,7 @@ Pool 7: 3 samples, 22.2μl total
 ### Error Messages
 
 - `Multiple dimer regions found`: Sample has more than one dimer region
-- `Too strong - requires <1μl`: Sample molarity too high for practical pipetting
+- `Too strong - requires <3μl`: Sample molarity too high for practical pipetting
 - `Too weak - requires >20μl`: Sample molarity too low for efficient pooling
 - `Pool below 100μl minimum`: Sub-pool volume insufficient for handling
 
@@ -183,11 +272,11 @@ Pool 7: 3 samples, 22.2μl total
 | Parameter | Default | Description | TECAN Consideration |
 |-----------|---------|-------------|-------------------|
 | Strong pool threshold | 5 nmol/l | Molarity cutoff for strong vs weak classification | Optimized for standard tip volumes |
-| Strong volume range | 1.5-7μl | Volume limits for strong samples | Within TECAN precision range |
+| Strong volume range | 3-7μl | Volume limits for strong samples | Within TECAN precision range |
 | Weak volume range | 7-20μl | Volume limits for weak samples | Single tip capacity limit |
 | Pool volume range | 100-150μl | Total volume limits per sub-pool | Optimal for downstream processing |
 | Max samples per pool | 48 | Maximum number of samples per sub-pool | Half-plate processing efficiency |
-| Minimum starting volume | 1.5μl | Minimum volume for strongest sample | Above TECAN dead volume |
+| Minimum starting volume | 3μl | Minimum volume for strongest sample | Above TECAN dead volume |
 
 ## TECAN Integration
 
