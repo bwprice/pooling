@@ -6,6 +6,8 @@ This script processes HSD1000 compact region table CSV files to calculate
 optimal pooling strategies for equimolar sequencing.
 
 Usage: python pooling_strategy.py <input_folder> [--max-samples MAX_SAMPLES]
+
+The script handles both nmol/l and pmol/l molarity units, converting pmol/l to nmol/l internally.
 """
 
 import pandas as pd
@@ -18,10 +20,21 @@ from pathlib import Path
 
 def load_and_process_csvs(folder_path):
     """Load all CSV files from folder and extract dimer/library data."""
-    csv_files = list(Path(folder_path).glob("*.csv"))
+    all_csv_files = list(Path(folder_path).glob("*.csv"))
+    
+    # Filter out previous output files (sub-pooling results)
+    csv_files = [f for f in all_csv_files if not f.name.endswith('sub-pooling.csv')]
     
     if not csv_files:
-        raise ValueError(f"No CSV files found in {folder_path}")
+        raise ValueError(f"No input CSV files found in {folder_path}")
+    
+    # Create file-to-plate mapping
+    file_to_plate = {}
+    print("\nPlate Assignment:")
+    for i, csv_file in enumerate(sorted(csv_files), 1):
+        file_to_plate[csv_file.name] = i
+        print(f"  Plate {i:03d}: {csv_file.name}")
+    print()
     
     all_samples = []
     
@@ -47,6 +60,7 @@ def load_and_process_csvs(folder_path):
                 sample_data = {
                     'FileName': well_data['FileName'].iloc[0],
                     'Tape Well': well_id,
+                    'PlateNumber': file_to_plate[csv_file.name],
                     'Dimer Conc.': None,
                     'Dimer Molarity': None,
                     'Lib Conc.': None,
@@ -77,26 +91,39 @@ def load_and_process_csvs(folder_path):
                 # Find the concentration column (handles different encodings of µ)
                 conc_col = None
                 molarity_col = None
+                molarity_unit = None
                 
                 for col in df.columns:
                     if 'Conc.' in col and ('pg/' in col):
                         conc_col = col
+                    elif 'Region Molarity' in col and ('nmol/l' in col):
+                        molarity_col = col
+                        molarity_unit = 'nmol'
                     elif 'Region Molarity' in col and ('pmol/l' in col):
                         molarity_col = col
+                        molarity_unit = 'pmol'
                 
                 if conc_col is None or molarity_col is None:
                     print(f"Warning: Could not find concentration/molarity columns in {csv_file}")
                     print(f"Available columns: {list(df.columns)}")
                     continue
                 
-                # Extract concentrations and molarities
+                # Extract concentrations and molarities with unit conversion
                 if dimer_regions:
                     sample_data['Dimer Conc.'] = dimer_regions[0][conc_col]
-                    sample_data['Dimer Molarity'] = dimer_regions[0][molarity_col]
+                    dimer_molarity = dimer_regions[0][molarity_col]
+                    # Convert pmol/l to nmol/l if needed
+                    if molarity_unit == 'pmol':
+                        dimer_molarity = dimer_molarity / 1000
+                    sample_data['Dimer Molarity'] = dimer_molarity
                 
                 if lib_regions:
                     sample_data['Lib Conc.'] = lib_regions[0][conc_col]
-                    sample_data['Lib Molarity'] = lib_regions[0][molarity_col]
+                    lib_molarity = lib_regions[0][molarity_col]
+                    # Convert pmol/l to nmol/l if needed
+                    if molarity_unit == 'pmol':
+                        lib_molarity = lib_molarity / 1000
+                    sample_data['Lib Molarity'] = lib_molarity
                 
                 all_samples.append(sample_data)
                 
@@ -114,10 +141,9 @@ def calculate_target_ratio(df):
 
 
 def determine_pool_type(molarity):
-    """Determine if pool is strong (>10nmol/l) or weak."""
-    # Convert pmol/l to nmol/l
-    molarity_nmol = molarity / 1000
-    return "strong" if molarity_nmol > 5 else "weak"
+    """Determine if pool is strong (>5nmol/l) or weak."""
+    # molarity is already in nmol/l
+    return "strong" if molarity > 5 else "weak"
 
 
 def well_id_to_position(well_id):
@@ -142,27 +168,6 @@ def well_id_to_position(well_id):
     # Calculate position (A1=1, A2=2, ..., A12=12, B1=13, ..., H12=96)
     position = (row_number - 1) * 12 + col_number
     return position
-
-
-def extract_plate_number(filename):
-    """Extract plate number from filename."""
-    # Look for common patterns like plate1, plate_1, Plate001, etc.
-    import re
-    
-    # Try to find plate number patterns
-    patterns = [
-        r'[Pp]late[_\s]*(\d+)',
-        r'[Pp](\d+)',
-        r'(\d+)'
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, filename)
-        if match:
-            return int(match.group(1))
-    
-    # If no pattern found, return 1 as default
-    return 1
 
 
 def calculate_pooling_strategy(df, max_samples_per_pool=48):
@@ -198,11 +203,11 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
         pool_type = determine_pool_type(strongest_molarity)
         
         # Volume constraints based on pool type
-        min_vol_per_sample = 1.5 if pool_type == "strong" else 7
+        min_vol_per_sample = 3 if pool_type == "strong" else 7
         max_vol_per_sample = 7 if pool_type == "strong" else 20
         
-        # Start with strongest sample - use at least 1μl, preferably more
-        strongest_volume = round(max(1.0, min_vol_per_sample), 2)
+        # Start with strongest sample - use at least 3μl, preferably more
+        strongest_volume = round(max(3, min_vol_per_sample), 2)
         target_moles = strongest_molarity * strongest_volume
         
         current_pool_samples = [strongest_idx]
@@ -230,7 +235,7 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
             
             # Check if sample fits constraints and is same pool type as the pool
             sample_pool_type = determine_pool_type(sample_molarity)
-            sample_min_vol = 1.5 if sample_pool_type == "strong" else 7
+            sample_min_vol = 3 if sample_pool_type == "strong" else 7
             sample_max_vol = 7 if sample_pool_type == "strong" else 20
             
             # Only add samples of the same pool type (strong with strong, weak with weak)
@@ -250,8 +255,8 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
                 unassigned_samples.remove(sample_idx)
             
             # Flag samples with volume issues
-            elif required_volume < 1.5:
-                df_sorted.loc[sample_idx, 'notes'] = 'Too strong - requires <1μl'
+            elif required_volume < 3:
+                df_sorted.loc[sample_idx, 'notes'] = 'Too strong - requires <3μl'
             elif required_volume > 20:
                 df_sorted.loc[sample_idx, 'notes'] = 'Too weak - requires >20μl'
         
@@ -270,8 +275,8 @@ def calculate_pooling_strategy(df, max_samples_per_pool=48):
     
     # Populate liquid handling columns
     for idx, row in df_sorted.iterrows():
-        # Extract plate number from filename
-        plate_num = extract_plate_number(row['FileName'])
+        # Use stored plate number instead of extracting from filename
+        plate_num = row['PlateNumber']
         df_sorted.loc[idx, 'SourcePlateLocation'] = f"SourcePlate[{plate_num:03d}]"
         
         # Convert well ID to position (1-96)
@@ -335,12 +340,15 @@ def main():
         # Sort by sub-pool number and library molarity
         df_output = df_output.sort_values(['sub-pool number', 'Lib Molarity'], ascending=[True, False])
         
-        # Generate output filename
-        today = datetime.now().strftime('%Y-%m-%d')
-        output_file = os.path.join(args.input_folder, f"{today}_sub-pooling.csv")
+        # Generate output filename with timestamp and create output folder
+        output_folder = os.path.join(args.input_folder, "output")
+        os.makedirs(output_folder, exist_ok=True)
+        
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
+        output_file = os.path.join(output_folder, f"{timestamp}_sub-pooling.csv")
         
         # Save to CSV
-        df_output.to_csv(output_file, index=False)
+        df_output.to_csv(output_file, index=False, encoding='utf-8')
         
         print(f"Pooling strategy saved to: {output_file}")
         print(f"Processed {len(df)} samples into {df['sub-pool number'].max()} sub-pools")
@@ -353,7 +361,7 @@ def main():
         
         print("\nSub-pool Summary:")
         for pool_num, row in pool_summary.iterrows():
-            print(f"Pool {pool_num}: {row['sub-pool samples']} samples, {row['sub-pool volume']:.1f}μl total")
+            print(f"Pool {pool_num}: {row['sub-pool samples']} samples, {row['sub-pool volume']:.1f}ul total")
         
     except Exception as e:
         print(f"Error: {e}")
