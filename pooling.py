@@ -94,7 +94,7 @@ def load_and_process_csvs(folder_path):
                 molarity_unit = None
                 
                 for col in df.columns:
-                    if 'Conc.' in col and ('pg/' in col):
+                    if 'Conc.' in col:
                         conc_col = col
                     elif 'Region Molarity' in col and ('nmol/l' in col):
                         molarity_col = col
