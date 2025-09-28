@@ -344,7 +344,7 @@ Pool 8: 5.0 samples, 66.7ul total
 ```
 
 Note: Most pools now reach the optimal 150μl target volume. Pool 8 is volume-constrained but still significantly improved from its original size.
-```
+
 
 ## Troubleshooting
 
