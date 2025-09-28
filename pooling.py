@@ -147,7 +147,7 @@ def determine_pool_type(molarity):
 
 
 def well_id_to_position(well_id):
-    """Convert well ID (e.g., 'A1', 'H12') to position number (1-96)."""
+    """Convert well ID (e.g., 'A1', 'H12') to position number (1-96) using column-based numbering."""
     if not well_id or len(well_id) < 2:
         return 0
     
@@ -165,8 +165,8 @@ def well_id_to_position(well_id):
     if row_number < 1 or row_number > 8 or col_number < 1 or col_number > 12:
         return 0
     
-    # Calculate position (A1=1, A2=2, ..., A12=12, B1=13, ..., H12=96)
-    position = (row_number - 1) * 12 + col_number
+    # Calculate position using column-based numbering (A1=1, B1=2, ..., H1=8, A2=9, ..., H12=96)
+    position = (col_number - 1) * 8 + row_number
     return position
 
 

@@ -296,7 +296,7 @@ Additional columns formatted for TECAN liquid handling systems (compatible with 
 | Column | Description | TECAN Format |
 |--------|-------------|--------------|
 | SourcePlateLocation | Source plate labware identifier | "SourcePlate[001]", "SourcePlate[002]", etc. |
-| SourceWellPosition | Source well position (1-96 format) | 1-96 (A1=1, A2=2, ..., H12=96) |
+| SourceWellPosition | Source well position (1-96 format) | 1-96 (A1=1, B1=2, ..., H1=8, A2=9, ..., H12=96) |
 | VolSample | Sample volume to aspirate [μl] | Decimal format (e.g., 5.5, 12.3) |
 | BufferLocation | Buffer plate labware identifier | "TEBuffer[001]" (constant) |
 | BufferWellPosition | Buffer well position | 1 (constant - single buffer well) |
@@ -307,7 +307,7 @@ Additional columns formatted for TECAN liquid handling systems (compatible with 
 #### TECAN Integration Notes
 
 - **Labware Names**: Use exact labware names as defined in your TECAN worklist
-- **Well Numbering**: Standard 96-well format (A1=1, A2=2, ..., A12=12, B1=13, ..., H12=96)
+- **Well Numbering**: Column-based 96-well format (A1=1, B1=2, ..., H1=8, A2=9, ..., H12=96)
 - **Volume Precision**: Volumes rounded to 0.1μl precision for pipetting accuracy
 - **Plate Capacity**: Each destination well represents one sub-pool
 - **Buffer Integration**: Ready for optional buffer addition workflows
@@ -316,7 +316,7 @@ Additional columns formatted for TECAN liquid handling systems (compatible with 
 
 ```
 Sample 1: SourcePlate[001], Well 1 (A1) → 5.5μl → DestinationPlate[001], Well 1
-Sample 2: SourcePlate[001], Well 2 (A2) → 7.2μl → DestinationPlate[001], Well 1  
+Sample 2: SourcePlate[001], Well 2 (B1) → 7.2μl → DestinationPlate[001], Well 1  
 Sample 3: SourcePlate[002], Well 1 (A1) → 3.8μl → DestinationPlate[001], Well 2
 ```
 
